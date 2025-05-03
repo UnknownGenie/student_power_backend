@@ -50,23 +50,24 @@ export class JobService {
       
       let filter = { ...rest };
       
-      // Handle public access (no user) vs signed-in user access
-      if (!user) {
-        // Public access - only active jobs
-        filter.status = 'active';
-      } else if (user.role === 'student') {
-        // Students see active jobs
-        filter.status = 'active';
-      } else if (user.role === 'school_admin') {
-        // School admins might have additional filters
-        // No specific filter added - they see all jobs
-      } else if (user.role === 'company_admin') {
-        // Company admins see their own company's jobs
-        filter.companyId = user.companyId;
-      } else if (user.role === 'admin') {
-        // Admins see all jobs
-        // No specific filter needed
+      // Remove empty status to prevent SQL errors
+      if (filter.status === '') {
+        delete filter.status;
       }
+      
+      // Apply role-based filtering
+      console.log('User role:', user );
+      if (!user) {
+        filter.status = 'active';
+      } else if (user.role === 'student' || user.role === 'public') {
+        filter.status = 'active';
+      } else if (user.role === 'company_admin' && user.companyId) {
+        // Ensure companyId exists and is properly applied for company admins
+        filter.companyId = user.companyId;
+        console.log(`Filtering jobs for company admin with companyId: ${user.companyId}`);
+      }
+      
+      console.log('Job filter:', JSON.stringify(filter));
       
       const jobs = await Job.findAll({
         where: filter,
@@ -93,10 +94,13 @@ export class JobService {
         throw new Error(`Job with id ${id} not found`);
       }
       
-      // For public users, only allow viewing active jobs
       if ((!user || user.role === 'public' || user.role === 'student') && 
           job.status !== 'active') {
         throw new Error('Access to this job is restricted');
+      }
+      
+      if (user.role === 'company_admin' && job.companyId !== user.companyId) {
+        throw new Error('You do not have permission to view this job');
       }
       
       return job;

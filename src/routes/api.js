@@ -11,6 +11,7 @@ import {
   applyForJob, getStudentApplications, getJobApplications, getAccessibleJobApplications
 } from '../controllers/jobApplication.controller.js';
 import { protect } from '../middleware/auth.js';
+import { optionalAuth } from '../middleware/optionalAuth.js';
 
 export const router = express.Router();
 
@@ -25,19 +26,18 @@ router.get('/users', protect, getUsers);
 
 // Job routes
 router.post('/jobs', protect, createJob);
-router.get('/jobs', getJobs);
-router.get('/jobs/:id', getJob);
+router.get('/jobs', optionalAuth, getJobs);
+router.get('/jobs/:id', optionalAuth, getJob);
 router.put('/jobs/:id', protect, updateJob);
 router.delete('/jobs/:id', protect, deleteJob);
 
 // Job approval routes
 router.post('/jobs/:jobId/approve', protect, approveJob);
 router.get('/jobs/:jobId/approvals', protect, getJobApprovals);
-router.get('/schools/approved-jobs', getSchoolApprovedJobs);
+router.get('/schools/approved-jobs', optionalAuth, getSchoolApprovedJobs);
 
 // Job application routes
 router.post('/jobs/:jobId/apply', protect, applyForJob);
 router.get('/applications', protect, getStudentApplications);
 router.get('/jobs/:jobId/applications', protect, getJobApplications);
-router.get('/users/applications', protect, getStudentApplications);
 router.get('/jobs/:jobId/applicants', protect, getAccessibleJobApplications);
