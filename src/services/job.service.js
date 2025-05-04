@@ -45,26 +45,29 @@ export class JobService {
   
   static async getJobs(query, user) {
     try {
-      const { limit = 10, page = 1, ...rest } = query;
+      const { limit = 10, page = 1, schoolId, ...rest } = query;
       const skip = (page - 1) * limit;
       
       let filter = { ...rest };
       
-      // Remove empty status to prevent SQL errors
       if (filter.status === '') {
         delete filter.status;
       }
       
-      // Apply role-based filtering
-      console.log('User role:', user );
+      console.log('User role:', user);
       if (!user) {
         filter.status = 'active';
-      } else if (user.role === 'student' || user.role === 'public') {
+      } else if (user.role === 'user' || user.role === 'public') {
         filter.status = 'active';
       } else if (user.role === 'company_admin' && user.companyId) {
-        // Ensure companyId exists and is properly applied for company admins
         filter.companyId = user.companyId;
         console.log(`Filtering jobs for company admin with companyId: ${user.companyId}`);
+      } else if (user.role === 'school_admin' && user.schoolId) {
+        // For school admins, we need to handle this differently since jobs don't have schoolId
+        // This is likely the source of the error
+        // Instead we might need to join to JobApprovals or handle this via a separate query
+        console.log(`School admin access with schoolId: ${user.schoolId}`);
+        // Removing any schoolId filter as it's not a column in the jobs table
       }
       
       console.log('Job filter:', JSON.stringify(filter));
@@ -76,6 +79,28 @@ export class JobService {
         order: [['createdAt', 'DESC']],
         include: [{ model: Company, attributes: ['id', 'name'] }]
       });
+      
+      // If user role is 'user', check if the user has applied for each job
+      if (user && user.role === 'user') {
+        const jobIds = jobs.map(job => job.id);
+        
+        const applications = await JobApplication.findAll({
+          where: {
+            jobId: { [Op.in]: jobIds },
+            userId: user.id
+          },
+          attributes: ['jobId']
+        });
+        
+        const appliedJobIds = applications.map(app => app.jobId);
+        
+        // Add hasApplied flag to each job
+        return jobs.map(job => {
+          const jobData = job.toJSON();
+          jobData.hasApplied = appliedJobIds.includes(job.id);
+          return jobData;
+        });
+      }
       
       return jobs;
     } catch (error) {
@@ -101,6 +126,20 @@ export class JobService {
       
       if (user.role === 'company_admin' && job.companyId !== user.companyId) {
         throw new Error('You do not have permission to view this job');
+      }
+      
+      // If user role is 'user', check if they have applied for this job
+      if (user && user.role === 'user') {
+        const application = await JobApplication.findOne({
+          where: {
+            jobId: id,
+            userId: user.id
+          }
+        });
+        
+        const jobData = job.toJSON();
+        jobData.hasApplied = !!application;
+        return jobData;
       }
       
       return job;

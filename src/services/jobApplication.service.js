@@ -19,25 +19,14 @@ export class JobApplicationService {
         };
       }
       
-      const job = await Job.findOne({
-        where: { id: jobId },
-        include: [{
-          model: JobApproval,
-          as: 'approvals',
-          required: true,
-          where: {
-            schoolId: user.schoolId,
-            status: 'approved'
-          }
-        }]
-      });
+      const job = await Job.findByPk(jobId);
       
       if (!job) {
         return {
           success: false,
           statusCode: 404,
           data: { 
-            error: 'Job not found or not approved for your school',
+            error: 'Job not found',
             code: 'JOB_NOT_AVAILABLE'
           }
         };
@@ -92,16 +81,6 @@ export class JobApplicationService {
 
   static async getStudentApplications(user, query = {}) {
     try {
-      if (user.role !== 'user') {
-        return {
-          success: false,
-          statusCode: 403,
-          data: { 
-            error: 'Only students can view their applications',
-            code: 'PERMISSION_DENIED'
-          }
-        };
-      }
       
       const page = parseInt(query.page, 10) || 1;
       const limit = parseInt(query.limit, 10) || 10;
@@ -385,6 +364,124 @@ export class JobApplicationService {
       };
     } catch (error) {
       return ErrorHandler.handleServiceError(error, { jobId }, 'JOB APPLICATION SERVICE');
+    }
+  }
+
+  static async getCompanyApplications(companyId, query = {}) {
+    try {
+      const { limit = 10, page = 1, status } = query;
+      const skip = (page - 1) * limit;
+      
+      const filter = {
+        include: [
+          {
+            model: Job,
+            where: { companyId },
+            required: true
+          },
+          {
+            model: User,
+            attributes: ['id', 'name', 'email']
+          }
+        ],
+        limit: parseInt(limit),
+        offset: skip,
+        order: [['createdAt', 'DESC']]
+      };
+      
+      if (status) {
+        filter.where = { status };
+      }
+      
+      const applications = await JobApplication.findAll(filter);
+      
+      return {
+        success: true,
+        statusCode: 200,
+        data: [ ...applications ]
+      };
+    } catch (error) {
+      return ErrorHandler.handleServiceError(error, { companyId }, 'JOB APPLICATION SERVICE');
+    }
+  }
+  
+  static async getAllApplications() {
+    try {
+      const applications = await JobApplication.findAll({
+        include: [
+          {
+            model: Job,
+            include: [{ model: Company, attributes: ['id', 'name'] }]
+          },
+          {
+            model: User,
+            attributes: ['id', 'name', 'email', 'role', 'schoolId']
+          }
+        ]
+      });
+      
+      return applications;
+    } catch (error) {
+      console.error('[JOB APPLICATION SERVICE ERROR]', error);
+      throw error;
+    }
+  }
+
+  static async applyToJob(jobId, userId, data = {}) {
+    try {
+      const job = await Job.findByPk(jobId);
+      
+      if (!job) {
+        return {
+          success: false,
+          statusCode: 404,
+          data: {
+            error: 'Job not found',
+            code: 'NOT_FOUND'
+          }
+        };
+      }
+      
+      // Check if user has already applied
+      const existingApplication = await JobApplication.findOne({
+        where: { jobId, userId }
+      });
+      
+      if (existingApplication) {
+        return {
+          success: false,
+          statusCode: 400,
+          data: {
+            error: 'You have already applied for this job',
+            code: 'ALREADY_APPLIED'
+          }
+        };
+      }
+      
+      const application = await JobApplication.create({
+        jobId,
+        userId,
+        resume: data.resume || null,
+        coverLetter: data.coverLetter || null,
+        status: 'pending'
+      });
+      
+      // Update application count on job
+      await job.increment('applicationCount');
+      
+      return {
+        success: true,
+        statusCode: 201,
+        data: {
+          application: {
+            id: application.id,
+            status: application.status,
+            createdAt: application.createdAt
+          }
+        }
+      };
+    } catch (error) {
+      return ErrorHandler.handleServiceError(error, { jobId, userId, ...data }, 'JOB APPLICATION SERVICE');
     }
   }
 }
