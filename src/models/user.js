@@ -55,6 +55,11 @@ export default (sequelize) => {
     companyId: {
       type: DataTypes.UUID,
       allowNull: true
+    },
+    premium: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
     }
   }, {
     sequelize,

@@ -28,7 +28,7 @@ export class AuthService {
       const user = await this.createUser({
         ...data.user,
         role,
-        role_in_organization: 'staff',
+        role_in_organization: type === 'student' ? null : 'staff',
         ...userData
       }, transaction);
       
@@ -60,7 +60,8 @@ export class AuthService {
       role: userData.role,
       role_in_organization: userData.role_in_organization,
       ...(userData.schoolId && { schoolId: userData.schoolId }),
-      ...(userData.companyId && { companyId: userData.companyId })
+      ...(userData.companyId && { companyId: userData.companyId }),
+      premium: userData.premium || false
     }, { transaction });
   }
   
@@ -69,8 +70,14 @@ export class AuthService {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role
+      role: user.role,
+      premium: user.premium
     };
+    
+    // Handle the case where type is null (regular user)
+    if (!type) {
+      return { user: userData };
+    }
     
     const entityCreator = EntityCreatorService.getCreator(type);
     const entityData = entityCreator.formatResponse(entity);
@@ -133,6 +140,8 @@ export class AuthService {
       } else if (user.companyId) {
         type = 'company';
         entity = await Company.findByPk(user.companyId);
+      } else if (user.role === 'user') {
+        type = 'student';
       }
       
       const responseData = this.formatResponseData(user, entity, type);
@@ -161,6 +170,8 @@ export class AuthService {
       } else if (user.companyId) {
         type = 'company';
         entity = await Company.findByPk(user.companyId);
+      } else if (user.role === 'user') {
+        type = 'student';
       }
       
       const responseData = this.formatResponseData(user, entity, type);
