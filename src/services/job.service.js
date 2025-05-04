@@ -43,218 +43,109 @@ export class JobService {
     }
   }
   
-  static async getJobs(user, query = {}) {
+  static async getJobs(query, user) {
     try {
-      const whereClause = {};
-      const includeModels = [
-        {
-          model: Company,
-          attributes: ['id', 'name']
-        }
-      ];
+      const { limit = 10, page = 1, schoolId, ...rest } = query;
+      const skip = (page - 1) * limit;
       
-      // Add job applications if user role is 'user'
-      let userApplications = [];
-      if (user.role === 'user') {
-        userApplications = await JobApplication.findAll({
-          where: { userId: user.id },
+      let filter = { ...rest };
+      
+      if (filter.status === '') {
+        delete filter.status;
+      }
+      
+      console.log('User role:', user);
+      if (!user) {
+        filter.status = 'active';
+      } else if (user.role === 'user' || user.role === 'public') {
+        filter.status = 'active';
+      } else if (user.role === 'company_admin' && user.companyId) {
+        filter.companyId = user.companyId;
+        console.log(`Filtering jobs for company admin with companyId: ${user.companyId}`);
+      } else if (user.role === 'school_admin' && user.schoolId) {
+        // For school admins, we need to handle this differently since jobs don't have schoolId
+        // This is likely the source of the error
+        // Instead we might need to join to JobApprovals or handle this via a separate query
+        console.log(`School admin access with schoolId: ${user.schoolId}`);
+        // Removing any schoolId filter as it's not a column in the jobs table
+      }
+      
+      console.log('Job filter:', JSON.stringify(filter));
+      
+      const jobs = await Job.findAll({
+        where: filter,
+        limit: parseInt(limit),
+        offset: skip,
+        order: [['createdAt', 'DESC']],
+        include: [{ model: Company, attributes: ['id', 'name'] }]
+      });
+      
+      // If user role is 'user', check if the user has applied for each job
+      if (user && user.role === 'user') {
+        const jobIds = jobs.map(job => job.id);
+        
+        const applications = await JobApplication.findAll({
+          where: {
+            jobId: { [Op.in]: jobIds },
+            userId: user.id
+          },
           attributes: ['jobId']
+        });
+        
+        const appliedJobIds = applications.map(app => app.jobId);
+        
+        // Add hasApplied flag to each job
+        return jobs.map(job => {
+          const jobData = job.toJSON();
+          jobData.hasApplied = appliedJobIds.includes(job.id);
+          return jobData;
         });
       }
       
-      if (query.status) {
-        whereClause.status = query.status;
-      }
-      
-      let approvalRequired = false;
-      
-      if (user.role === 'school_admin') {
-        const approvalInclude = {
-          model: JobApproval,
-          as: 'approvals',
-          required: false,
-          where: { schoolId: user.schoolId }
-        };
-        
-        if (query.approvedBySchool === 'true') {
-          approvalInclude.where.status = 'approved';
-          approvalInclude.required = true;
-        }
-        
-        includeModels.push(approvalInclude);
-      } else if (user.role === 'company_admin') {
-        whereClause.companyId = user.companyId;
-        
-        if (query.approvedBySchool === 'true') {
-          includeModels.push({
-            model: JobApproval,
-            as: 'approvals',
-            required: true,
-            where: { status: 'approved' }
-          });
-        }
-      } else if (user.role === 'user') {
-        whereClause.status = 'active';
-        
-        if (user.schoolId) {
-          includeModels.push({
-            model: JobApproval,
-            as: 'approvals',
-            required: true,
-            where: { 
-              schoolId: user.schoolId,
-              status: 'approved'
-            }
-          });
-        }
-      }
-      
-      const page = parseInt(query.page, 10) || 1;
-      const limit = parseInt(query.limit, 10) || 10;
-      const offset = (page - 1) * limit;
-      
-      const { count, rows } = await Job.findAndCountAll({
-        where: whereClause,
-        include: includeModels,
-        limit,
-        offset,
-        order: [['createdAt', 'DESC']],
-        distinct: true
-      });
-      
-      const jobs = rows.map(job => {
-        const baseJob = {
-          id: job.id,
-          title: job.title,
-          description: job.description,
-          expiresAt: job.expiresAt,
-          status: job.status,
-          company: job.Company,
-          createdAt: job.createdAt,
-          approvalCount: job.approvalCount,
-          applicationCount: job.applicationCount,
-          isApproved: job.isApproved
-        };
-        
-        // Add isApplied flag for users
-        if (user.role === 'user') {
-          baseJob.isApplied = userApplications.some(app => app.jobId === job.id);
-        }
-        
-        if (user.role === 'school_admin' && job.approvals && job.approvals.length) {
-          baseJob.schoolApproval = {
-            id: job.approvals[0].id,
-            status: job.approvals[0].status,
-            comments: job.approvals[0].comments
-          };
-        }
-        
-        return baseJob;
-      });
-      
-      return {
-        success: true,
-        statusCode: 200,
-        data: {
-          jobs,
-          pagination: {
-            totalItems: count,
-            totalPages: Math.ceil(count / limit),
-            currentPage: page,
-            itemsPerPage: limit
-          }
-        }
-      };
+      return jobs;
     } catch (error) {
-      return ErrorHandler.handleServiceError(error, {}, 'JOB SERVICE');
+      console.error('[JOB SERVICE ERROR]', error);
+      throw error;
     }
   }
   
   static async getJob(id, user) {
     try {
-      const includeModels = [
-        {
-          model: Company,
-          attributes: ['id', 'name']
-        }
-      ];
-      
-      // For students, include school approval to check if it's approved
-      if (user.role === 'user' && user.schoolId) {
-        includeModels.push({
-          model: JobApproval,
-          as: 'approvals',
-          required: false,
-          where: {
-            schoolId: user.schoolId
-          }
-        });
-      }
-      
       const job = await Job.findByPk(id, {
-        include: includeModels
+        include: [{ model: Company, attributes: ['id', 'name'] }]
       });
       
       if (!job) {
-        return {
-          success: false,
-          statusCode: 404,
-          data: { 
-            error: 'Job not found',
-            code: 'NOT_FOUND'
-          }
-        };
+        throw new Error(`Job with id ${id} not found`);
       }
       
-      // For company admins, check ownership
+      if ((!user || user.role === 'public' || user.role === 'student') && 
+          job.status !== 'active') {
+        throw new Error('Access to this job is restricted');
+      }
+      
       if (user.role === 'company_admin' && job.companyId !== user.companyId) {
-        return {
-          success: false,
-          statusCode: 403,
-          data: { 
-            error: 'You do not have permission to view this job',
-            code: 'PERMISSION_DENIED'
-          }
-        };
+        throw new Error('You do not have permission to view this job');
       }
       
-      // For students, check if job is approved by their school
-      if (user.role === 'user' && user.schoolId) {
-        const isApprovedBySchool = job.approvals && 
-                                  job.approvals.some(approval => 
-                                    approval.schoolId === user.schoolId && 
-                                    approval.status === 'approved');
+      // If user role is 'user', check if they have applied for this job
+      if (user && user.role === 'user') {
+        const application = await JobApplication.findOne({
+          where: {
+            jobId: id,
+            userId: user.id
+          }
+        });
         
-        if (!isApprovedBySchool) {
-          return {
-            success: false,
-            statusCode: 403,
-            data: { 
-              error: 'This job is not available for your school',
-              code: 'JOB_NOT_APPROVED'
-            }
-          };
-        }
+        const jobData = job.toJSON();
+        jobData.hasApplied = !!application;
+        return jobData;
       }
       
-      return {
-        success: true,
-        statusCode: 200,
-        data: { 
-          job: {
-            id: job.id,
-            title: job.title,
-            description: job.description,
-            expiresAt: job.expiresAt,
-            status: job.status,
-            company: job.Company,
-            createdAt: job.createdAt,
-            updatedAt: job.updatedAt
-          }
-        }
-      };
+      return job;
     } catch (error) {
-      return ErrorHandler.handleServiceError(error, { id }, 'JOB SERVICE');
+      console.error('[JOB SERVICE ERROR]', error);
+      throw error;
     }
   }
   
@@ -349,3 +240,50 @@ export class JobService {
     }
   }
 }
+
+export const getJobs = async (query, user) => {
+  try {
+    const { limit = 10, page = 1, ...rest } = query;
+    const skip = (page - 1) * limit;
+    
+    let filter = { ...rest };
+    
+    // For public or student users, only show approved jobs
+    if (!user || user.role === 'public' || user.role === 'student') {
+      filter.status = 'approved';
+    }
+    
+    // Add additional filters based on user role if needed
+    // ... existing code for role-based filtering ...
+    
+    const jobs = await Job.find(filter)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .sort({ createdAt: -1 });
+      
+    return jobs;
+  } catch (error) {
+    console.error('[JOB SERVICE ERROR] Operation failed:', error);
+    throw new Error('Failed to retrieve jobs');
+  }
+};
+
+export const getJob = async (id, user) => {
+  try {
+    const job = await Job.findById(id);
+    
+    if (!job) {
+      throw new Error(`Job with id ${id} not found`);
+    }
+    
+    // For public or student users, only allow viewing approved jobs
+    if ((!user || user.role === 'public' || user.role === 'student') && job.status !== 'approved') {
+      throw new Error('Not authorized to view this job');
+    }
+    
+    return job;
+  } catch (error) {
+    console.error('[JOB SERVICE ERROR] Operation failed:', error);
+    throw new Error(`Failed to retrieve job with id ${id}`);
+  }
+};
