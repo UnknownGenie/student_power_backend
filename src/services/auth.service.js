@@ -28,7 +28,7 @@ export class AuthService {
       const user = await this.createUser({
         ...data.user,
         role,
-        role_in_organization: 'staff',
+        role_in_organization: type === 'student' ? null : 'staff',
         ...userData
       }, transaction);
       
@@ -60,7 +60,8 @@ export class AuthService {
       role: userData.role,
       role_in_organization: userData.role_in_organization,
       ...(userData.schoolId && { schoolId: userData.schoolId }),
-      ...(userData.companyId && { companyId: userData.companyId })
+      ...(userData.companyId && { companyId: userData.companyId }),
+      premium: userData.premium || false
     }, { transaction });
   }
   

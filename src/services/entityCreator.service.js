@@ -67,8 +67,8 @@ class CompanyEntityCreator extends BaseEntityCreator {
 
 class StudentEntityCreator extends BaseEntityCreator {
   async createModel(data) {
-    if (data.schoolId) {
-      const school = await School.findByPk(data.schoolId);
+    if (data.user?.schoolId) {
+      const school = await School.findByPk(data.user.schoolId);
       return school;
     }
     return null;
@@ -81,7 +81,8 @@ class StudentEntityCreator extends BaseEntityCreator {
   getUserData(entity, data) {
     return { 
       ...(entity && { schoolId: entity.id }),
-      ...(data.premium !== undefined && { premium: data.premium })
+      ...(data.user?.schoolId && { schoolId: data.user.schoolId }),
+      premium: data.user?.premium || false
     };
   }
   
