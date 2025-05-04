@@ -69,8 +69,14 @@ export class AuthService {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role
+      role: user.role,
+      premium: user.premium
     };
+    
+    // Handle the case where type is null (regular user)
+    if (!type) {
+      return { user: userData };
+    }
     
     const entityCreator = EntityCreatorService.getCreator(type);
     const entityData = entityCreator.formatResponse(entity);
@@ -133,6 +139,8 @@ export class AuthService {
       } else if (user.companyId) {
         type = 'company';
         entity = await Company.findByPk(user.companyId);
+      } else if (user.role === 'user') {
+        type = 'student';
       }
       
       const responseData = this.formatResponseData(user, entity, type);
@@ -161,6 +169,8 @@ export class AuthService {
       } else if (user.companyId) {
         type = 'company';
         entity = await Company.findByPk(user.companyId);
+      } else if (user.role === 'user') {
+        type = 'student';
       }
       
       const responseData = this.formatResponseData(user, entity, type);

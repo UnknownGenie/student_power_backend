@@ -6,15 +6,15 @@ class BaseEntityCreator {
     return {
       entity,
       role: this.getRole(),
-      userData: this.getUserData(entity)
+      userData: this.getUserData(entity, data)
     };
   }
   
   formatResponse(entity) {
     const result = {};
     result[this.getEntityType()] = {
-      id: entity.id,
-      name: entity.name
+      id: entity?.id,
+      name: entity?.name
     };
     return result;
   }
@@ -65,11 +65,42 @@ class CompanyEntityCreator extends BaseEntityCreator {
   }
 }
 
+class StudentEntityCreator extends BaseEntityCreator {
+  async createModel(data) {
+    if (data.schoolId) {
+      const school = await School.findByPk(data.schoolId);
+      return school;
+    }
+    return null;
+  }
+  
+  getRole() {
+    return 'user';
+  }
+  
+  getUserData(entity, data) {
+    return { 
+      ...(entity && { schoolId: entity.id }),
+      ...(data.premium !== undefined && { premium: data.premium })
+    };
+  }
+  
+  getEntityType() {
+    return 'school';
+  }
+  
+  formatResponse(entity) {
+    if (!entity) return {};
+    return super.formatResponse(entity);
+  }
+}
+
 export class EntityCreatorService {
   static getCreator(type) {
     const creators = {
       school: new SchoolEntityCreator(),
-      company: new CompanyEntityCreator()
+      company: new CompanyEntityCreator(),
+      student: new StudentEntityCreator()
     };
     
     const creator = creators[type];

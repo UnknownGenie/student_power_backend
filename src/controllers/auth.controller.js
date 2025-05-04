@@ -5,7 +5,13 @@ import { AuthService } from '../services/auth.service.js';
 
 export const signup = async (req, res) => {
   // Detect the entity type from request body
-  const type = req.body.company ? 'company' : 'school';
+  let type = 'student';
+  if (req.body.company) {
+    type = 'company';
+  } else if (req.body.school) {
+    type = 'school';
+  }
+  
   const data = { ...req.body, type };
   
   const result = await AuthService.signup(data);

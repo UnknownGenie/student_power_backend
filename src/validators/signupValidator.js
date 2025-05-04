@@ -71,11 +71,23 @@ class CompanySignupValidator extends BaseSignupValidator {
   }
 }
 
+class StudentSignupValidator extends BaseSignupValidator {
+  validateOrganizationData(data, errors) {
+    if (data.schoolId && !data.schoolId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)) {
+      errors.schoolId = 'Invalid school ID format';
+      return false;
+    }
+    
+    return true;
+  }
+}
+
 export class SignupValidatorFactory {
   static createValidator(type) {
     const validators = {
       school: new SchoolSignupValidator(),
-      company: new CompanySignupValidator()
+      company: new CompanySignupValidator(),
+      student: new StudentSignupValidator()
     };
     
     const validator = validators[type];

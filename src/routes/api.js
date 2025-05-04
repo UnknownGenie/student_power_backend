@@ -10,6 +10,9 @@ import {
 import { 
   applyForJob, getStudentApplications, getJobApplications, getAccessibleJobApplications
 } from '../controllers/jobApplication.controller.js';
+import {
+  getSchools, getSchool
+} from '../controllers/school.controller.js';
 import { protect } from '../middleware/auth.js';
 import { optionalAuth } from '../middleware/optionalAuth.js';
 
@@ -23,6 +26,10 @@ router.get('/auth/me', protect, getMe);
 // User management routes
 router.post('/users', protect, createUser);
 router.get('/users', protect, getUsers);
+
+// Public school routes
+router.get('/schools', getSchools);
+router.get('/schools/:id', getSchool);
 
 // Job routes
 router.post('/jobs', protect, createJob);
